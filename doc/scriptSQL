@@ -1,0 +1,350 @@
+-- =============================================================================
+-- DATA SEED: HỆ THỐNG QUẢN LÝ SẢN PHẨM & PHÂN QUYỀN RBAC (POSTGRESQL)
+-- Tài liệu dữ liệu khởi tạo:
+--   1. Quyền hạn (Permissions) & Vai trò (Roles)
+--   2. Tài khoản mẫu Admin & Staff (Mật khẩu mặc định: 123456)
+--   3. 20 Danh mục sản phẩm điện tử (Categories - Đủ trạng thái Active, Inactive, Trash)
+--   4. 100 Sản phẩm điện tử (Product - Đủ trạng thái: Mở bán, Hết hàng, Tạm ẩn, Thuộc danh mục ẩn, Thùng rác)
+--   5. Bảng liên kết N-N Product-Category (product_category)
+-- =============================================================================
+
+-- =============================================================================
+-- 1. Nạp danh sách Permissions chuẩn Fine-grained
+-- =============================================================================
+INSERT INTO permissions (id, permission_code, permission_name, description, is_delete) VALUES
+('perm-prod-read',    'product:read',     'Xem danh sách & chi tiết sản phẩm admin', 'Cho phép xem sản phẩm', false),
+('perm-prod-create',  'product:create',   'Thêm mới sản phẩm',                       'Cho phép tạo sản phẩm', false),
+('perm-prod-update',  'product:update',   'Cập nhật sản phẩm',                       'Cho phép sửa sản phẩm', false),
+('perm-prod-delete',  'product:delete',   'Xóa mềm sản phẩm',                        'Cho phép xóa sản phẩm', false),
+('perm-prod-bin',     'product:bin:read', 'Xem thùng rác sản phẩm',                  'Cho phép xem thùng rác', false),
+('perm-prod-restore', 'product:restore',  'Khôi phục sản phẩm từ thùng rác',         'Cho phép khôi phục sp', false),
+('perm-cat-read',     'category:read',    'Xem danh mục admin',                      'Cho phép xem danh mục', false),
+('perm-cat-create',   'category:create',  'Thêm mới danh mục',                       'Cho phép tạo danh mục', false),
+('perm-cat-update',   'category:update',  'Cập nhật danh mục',                       'Cho phép sửa danh mục', false),
+('perm-cat-delete',   'category:delete',  'Xóa mềm danh mục',                        'Cho phép xóa danh mục', false),
+('perm-cat-bin',      'category:bin:read','Xem thùng rác danh mục',                  'Cho phép xem thùng rác', false),
+('perm-cat-restore',  'category:restore', 'Khôi phục danh mục',                      'Cho phép khôi phục dm', false)
+ON CONFLICT (id) DO NOTHING;
+
+-- =============================================================================
+-- 2. Nạp Roles
+-- =============================================================================
+INSERT INTO roles (id, role_code, role_name, description, is_delete) VALUES
+('role-admin-id', 'ADMIN', 'Quản trị viên', 'Toàn quyền hệ thống', false),
+('role-staff-id', 'STAFF', 'Nhân viên bán hàng', 'Chỉ có quyền xem và sửa sản phẩm', false)
+ON CONFLICT (id) DO NOTHING;
+
+-- =============================================================================
+-- 3. Gán quyền cho ADMIN (Admin sở hữu toàn bộ các quyền)
+-- =============================================================================
+INSERT INTO role_permissions (id, role_id, permission_id) VALUES
+('rp-1',  'role-admin-id', 'perm-prod-read'),
+('rp-2',  'role-admin-id', 'perm-prod-create'),
+('rp-3',  'role-admin-id', 'perm-prod-update'),
+('rp-4',  'role-admin-id', 'perm-prod-delete'),
+('rp-5',  'role-admin-id', 'perm-prod-bin'),
+('rp-6',  'role-admin-id', 'perm-prod-restore'),
+('rp-7',  'role-admin-id', 'perm-cat-read'),
+('rp-8',  'role-admin-id', 'perm-cat-create'),
+('rp-9',  'role-admin-id', 'perm-cat-update'),
+('rp-10', 'role-admin-id', 'perm-cat-delete'),
+('rp-11', 'role-admin-id', 'perm-cat-bin'),
+('rp-12', 'role-admin-id', 'perm-cat-restore')
+ON CONFLICT (id) DO NOTHING;
+
+-- =============================================================================
+-- 4. Gán quyền cho STAFF (Chỉ có quyền xem và cập nhật sản phẩm)
+-- =============================================================================
+INSERT INTO role_permissions (id, role_id, permission_id) VALUES
+('rp-staff-1', 'role-staff-id', 'perm-prod-read'),
+('rp-staff-2', 'role-staff-id', 'perm-prod-update')
+ON CONFLICT (id) DO NOTHING;
+
+-- =============================================================================
+-- 5. Tạo User mẫu: admin & staff (Mật khẩu: 123456)
+-- =============================================================================
+INSERT INTO users (id, username, password, first_name, last_name, email, is_delete) VALUES
+('usr-admin-id', 'admin', '$2a$12$4EqqQaCFCijTG7XWZ57FoOdlu6.biCSCl5/Xycoy3wl0ECp0NHJK.', 'Admin', 'Root', 'admin@tnteco.vn', false),
+('usr-staff-id', 'staff', '$2a$12$tUGsRXdir.qj0GwXYlvAaOIE6gZa0rqVyQtqnuDWNN.E7GoFHAYXm', 'Staff', 'Sales', 'staff@tnteco.vn', false)
+ON CONFLICT (id) DO NOTHING;
+
+-- =============================================================================
+-- 6. Gán vai trò cho User
+-- =============================================================================
+INSERT INTO user_roles (id, user_id, role_id) VALUES
+('ur-1', 'usr-admin-id', 'role-admin-id'),
+('ur-2', 'usr-staff-id', 'role-staff-id')
+ON CONFLICT (id) DO NOTHING;
+
+-- =============================================================================
+-- 7. DANH MỤC SẢN PHẨM (20 Danh mục điện tử - Categories)
+-- Phân bổ trạng thái:
+--   - CAT-01 đến CAT-16 (16 DM): active = true, is_delete = false (Đang mở bán, hiển thị Client & Admin)
+--   - CAT-17 đến CAT-18 (2 DM): active = false, is_delete = false (Tạm ngưng kinh doanh, ẩn trên Client)
+--   - CAT-19 đến CAT-20 (2 DM): active = false, is_delete = true (Đã xóa mềm, nằm trong thùng rác Trash)
+-- =============================================================================
+INSERT INTO categories (id, code, name, description, active, is_delete, create_at, delete_at) VALUES
+('cat-01', 'CAT_SMARTPHONE', 'Điện thoại thông minh', 'Các dòng điện thoại di động thông minh Android, iOS cao cấp và phổ thông', true, false, NOW(), NULL),
+('cat-02', 'CAT_LAPTOP', 'Máy tính xách tay & Laptop', 'Laptop học tập, văn phòng, đồ họa kỹ thuật và laptop gaming hiệu năng cao', true, false, NOW(), NULL),
+('cat-03', 'CAT_TABLET', 'Máy tính bảng & Tablet', 'Máy tính bảng phục vụ làm việc sáng tạo, học tập và giải trí đa phương tiện', true, false, NOW(), NULL),
+('cat-04', 'CAT_SMARTWATCH', 'Đồng hồ thông minh', 'Đồng hồ đeo tay thông minh theo dõi sức khỏe, thể thao và định vị GPS', true, false, NOW(), NULL),
+('cat-05', 'CAT_TAI_NGHE', 'Tai nghe & Headphone', 'Tai nghe True Wireless, tai nghe chụp tai chống ồn và tai nghe gaming', true, false, NOW(), NULL),
+('cat-06', 'CAT_LOA_BLUETOOTH', 'Loa & Thiết bị âm thanh', 'Loa Bluetooth di động, loa soundbar TV và dàn âm thanh gia đình cao cấp', true, false, NOW(), NULL),
+('cat-07', 'CAT_BAN_PHIM', 'Bàn phím cơ & Văn phòng', 'Bàn phím cơ custom, bàn phím không dây mỏng nhẹ cho văn phòng và lập trình', true, false, NOW(), NULL),
+('cat-08', 'CAT_CHUOT_MAY_TINH', 'Chuột & Phụ kiện chuột', 'Chuột công thái học không dây, chuột gaming mắt đọc chính xác cao và lót chuột', true, false, NOW(), NULL),
+('cat-09', 'CAT_MAN_HINH', 'Màn hình máy tính', 'Màn hình gaming tần số quét cao, màn hình đồ họa 4K chuẩn màu sắc nét', true, false, NOW(), NULL),
+('cat-10', 'CAT_LINH_KIEN_PC', 'Linh kiện máy tính PC', 'Bộ vi xử lý CPU, card đồ họa VGA, bo mạch chủ Mainboard, RAM và nguồn máy tính', true, false, NOW(), NULL),
+('cat-11', 'CAT_THIET_BI_MANG', 'Thiết bị mạng & WiFi', 'Router WiFi 6/7 băng tần kép, bộ kích sóng WiFi Mesh và switch chia mạng Gigabit', true, false, NOW(), NULL),
+('cat-12', 'CAT_SMARTHOME', 'Thiết bị nhà thông minh', 'Robot hút bụi lau nhà, công tắc thông minh, đèn LED điều khiển bằng giọng nói', true, false, NOW(), NULL),
+('cat-13', 'CAT_CAMERA', 'Camera & Máy ảnh số', 'Camera an ninh giám sát IP, máy ảnh mirrorless kỹ thuật số và ống kính', true, false, NOW(), NULL),
+('cat-14', 'CAT_PHU_KIEN_SAC', 'Củ sạc, Cáp sạc & Pin sạc', 'Củ sạc nhanh GaN công suất cao, cáp sạc Type-C/Lightning và pin sạc dự phòng', true, false, NOW(), NULL),
+('cat-15', 'CAT_LUU_TRU', 'Ổ cứng & Thiết bị lưu trữ', 'Ổ cứng thể rắn SSD NVMe Gen4, ổ cứng HDD di động và USB, thẻ nhớ tốc độ cao', true, false, NOW(), NULL),
+('cat-16', 'CAT_CONSOLE_GAME', 'Máy chơi game & Console', 'Máy chơi game cầm tay, máy console thế hệ mới và tay cầm chơi game chuyên dụng', true, false, NOW(), NULL),
+('cat-17', 'CAT_MAY_DOC_SACH', 'Máy đọc sách & E-Reader', 'Máy đọc sách màn hình mực điện tử E-ink bảo vệ mắt (Tạm ngừng kinh doanh)', false, false, NOW(), NULL),
+('cat-18', 'CAT_MAY_IN_SCAN', 'Máy in & Máy quét', 'Máy in laser trắng đen, máy in màu đa chức năng và máy scan văn phòng (Tạm dừng bán)', false, false, NOW(), NULL),
+('cat-19', 'CAT_PHU_KIEN_CU', 'Phụ kiện linh kiện đời cũ', 'Danh mục các loại cáp chuẩn cũ VGA/DVI và dock sạc cũ (Đã đưa vào thùng rác)', false, true, NOW(), '2026-10-15 08:30:00'),
+('cat-20', 'CAT_LINH_KIEN_RA_MAY', 'Linh kiện rã máy thanh lý', 'Linh kiện cũ tháo máy không còn bảo hành (Đã đưa vào thùng rác)', false, true, NOW(), '2026-10-18 14:00:00')
+ON CONFLICT (id) DO NOTHING;
+
+-- =============================================================================
+-- 8. SẢN PHẨM ĐIỆN TỬ (100 Sản phẩm - Bảng "product")
+-- Phân bổ trạng thái nghiệp vụ:
+--   - PROD-001 đến PROD-065 (65 SP): active = true, is_delete = false, quantity > 0 (Mở bán, còn hàng, hiện Client & Admin)
+--   - PROD-066 đến PROD-075 (10 SP): active = true, is_delete = false, quantity = 0 (Mở bán nhưng HẾT HÀNG, hiện tồn kho 0)
+--   - PROD-076 đến PROD-085 (10 SP): active = false, is_delete = false, quantity > 0 (TẠM ẨN bởi Admin, ẩn ở Client)
+--   - PROD-086 đến PROD-090 (5 SP): active = true, is_delete = false, nhưng thuộc Category cha CAT-17 & CAT-18 tạm ngưng (Bị ẩn Client do Category)
+--   - PROD-091 đến PROD-100 (10 SP): is_delete = true, active = false, delete_at != null (ĐÃ XÓA MỀM, nằm trong thùng rác Trash)
+-- =============================================================================
+INSERT INTO product (id, code, name, description, price, quantity, active, is_delete, create_at, delete_at) VALUES
+('prod-001', 'PROD-001', 'iPhone 15 Pro Max 256GB Titan Tự Nhiên', 'Điện thoại cao cấp Apple chip A17 Pro khung viền titan siêu bền', 29490000.000, 45, true, false, NOW(), NULL),
+('prod-002', 'PROD-002', 'Samsung Galaxy S24 Ultra 5G 12GB 256GB', 'Flagship AI đỉnh cao từ Samsung với bút S-Pen tích hợp và camera 200MP', 27990000.000, 38, true, false, NOW(), NULL),
+('prod-003', 'PROD-003', 'Xiaomi 14 Ultra 16GB 512GB Leica', 'Điện thoại chụp ảnh chuyên nghiệp ống kính Leica và chip Snapdragon 8 Gen 3', 25490000.000, 20, true, false, NOW(), NULL),
+('prod-004', 'PROD-004', 'OPPO Find N3 5G Gập Mỏng Nhẹ', 'Smartphone màn hình gập cao cấp không nếp gấp bản lề siêu bền', 38990000.000, 15, true, false, NOW(), NULL),
+('prod-005', 'PROD-005', 'Google Pixel 8 Pro 128GB Bay Blue', 'Trải nghiệm Android thuần khiết kèm thuật toán xử lý ảnh Tensor G3', 21500000.000, 22, true, false, NOW(), NULL),
+('prod-006', 'PROD-006', 'Asus ROG Phone 8 Pro Gaming 16GB', 'Quái vật chiến game tản nhiệt buồng hơi màn hình 165Hz', 26990000.000, 18, true, false, NOW(), NULL),
+('prod-007', 'PROD-007', 'iPhone 13 128GB Chính Hãng VN/A', 'Điện thoại quốc dân pin trâu hiệu năng chip Apple A15 Bionic mượt mà', 13490000.000, 60, true, false, NOW(), NULL),
+('prod-008', 'PROD-008', 'Samsung Galaxy A55 5G 8GB 128GB', 'Thiết kế kim loại cao cấp kháng nước IP67 và màn Super AMOLED 120Hz', 8990000.000, 85, true, false, NOW(), NULL),
+('prod-009', 'PROD-009', 'Xiaomi Redmi Note 13 Pro 8GB 256GB', 'Camera 200MP chống rung OIS sạc nhanh 67W giá cực tốt', 6490000.000, 110, true, false, NOW(), NULL),
+('prod-010', 'PROD-010', 'Vivo X100 Pro 5G Camera Zeiss', 'Cụm camera ống kính Zeiss cảm biến 1 inch chân dung đỉnh cao', 20990000.000, 25, true, false, NOW(), NULL),
+('prod-011', 'PROD-011', 'MacBook Pro 14 M3 Pro 18GB 512GB Space Black', 'Laptop cao cấp Apple Silicon M3 Pro thời lượng pin tới 22 giờ', 49990000.000, 24, true, false, NOW(), NULL),
+('prod-012', 'PROD-012', 'MacBook Air 13 M2 8GB 256GB Midnight', 'Thiết kế siêu mỏng nhẹ 1.24kg màn hình Liquid Retina sắc nét', 24490000.000, 50, true, false, NOW(), NULL),
+('prod-013', 'PROD-013', 'Dell XPS 15 9530 Core i7-13700H RTX 4060', 'Laptop đồ họa doanh nhân màn hình 3.5K OLED InfinityEdge', 54900000.000, 12, true, false, NOW(), NULL),
+('prod-014', 'PROD-014', 'Lenovo ThinkPad X1 Carbon Gen 11 i7', 'Bàn phím gõ êm nhất thế giới vỏ sợi carbon siêu nhẹ chuẩn quân đội', 42500000.000, 16, true, false, NOW(), NULL),
+('prod-015', 'PROD-015', 'Asus ROG Zephyrus G16 OLED Core Ultra 9', 'Laptop gaming mỏng nhẹ màn hình OLED 240Hz và đồ họa RTX 4070', 61990000.000, 10, true, false, NOW(), NULL),
+('prod-016', 'PROD-016', 'Acer Predator Helios 16 i9-14900HX RTX 4080', 'Cỗ máy cày game đỉnh cao màn hình 240Hz tản nhiệt kim loại lỏng', 69990000.000, 8, true, false, NOW(), NULL),
+('prod-017', 'PROD-017', 'HP Envy 16 OLED i7-13700H RTX 4060', 'Laptop sáng tạo nội dung màn hình cảm ứng 120Hz âm thanh Bang Olufsen', 44500000.000, 14, true, false, NOW(), NULL),
+('prod-018', 'PROD-018', 'Asus Vivobook 15 OLED i5-13500H 16GB', 'Laptop sinh viên văn phòng màn OLED rực rỡ cấu hình mạnh mẽ', 16990000.000, 40, true, false, NOW(), NULL),
+('prod-019', 'PROD-019', 'iPad Pro 11 M4 Ultra Thin 256GB WiFi', 'Màn hình Ultra Retina Tandem OLED và chip Apple M4 siêu mỏng 5.3mm', 28990000.000, 30, true, false, NOW(), NULL),
+('prod-020', 'PROD-020', 'iPad Air 11 M2 128GB WiFi', 'Máy tính bảng Apple chip M2 hiệu năng mạnh hỗ trợ Apple Pencil Pro', 16990000.000, 45, true, false, NOW(), NULL),
+('prod-021', 'PROD-021', 'Samsung Galaxy Tab S9 Ultra 5G 256GB', 'Màn hình khổng lồ 14.6 inch Dynamic AMOLED 2X kháng nước IP68', 26490000.000, 15, true, false, NOW(), NULL),
+('prod-022', 'PROD-022', 'iPad Gen 10 10.9 inch 64GB WiFi', 'Thiết kế mới viền mỏng cổng USB-C nhiều màu sắc trẻ trung', 9490000.000, 65, true, false, NOW(), NULL),
+('prod-023', 'PROD-023', 'Xiaomi Pad 6 8GB 128GB 144Hz', 'Máy tính bảng giải trí màn hình 2.8K 144Hz 4 loa vòm Dolby Atmos', 7490000.000, 55, true, false, NOW(), NULL),
+('prod-024', 'PROD-024', 'Lenovo Tab P12 Pro kèm bút Precision Pen 3', 'Màn hình 12.6 inch AMOLED 2K phục vụ phác thảo vẽ chuyên nghiệp', 12900000.000, 20, true, false, NOW(), NULL),
+('prod-025', 'PROD-025', 'Apple Watch Ultra 2 GPS Cellular 49mm', 'Vỏ titan chuẩn quân đội pin 72 giờ đo lặn biển độ sâu 40m', 20490000.000, 28, true, false, NOW(), NULL),
+('prod-026', 'PROD-026', 'Apple Watch Series 9 GPS 45mm Nhôm', 'Chip S9 SiP tính năng Double Tap chạm ngón tay ma thuật', 9990000.000, 40, true, false, NOW(), NULL),
+('prod-027', 'PROD-027', 'Samsung Galaxy Watch 6 Classic 47mm LTE', 'Vòng xoay bezel vật lý đặc trưng theo dõi điện tâm đồ ECG', 7990000.000, 35, true, false, NOW(), NULL),
+('prod-028', 'PROD-028', 'Garmin Fenix 7 Pro Solar Sapphire', 'Đồng hồ thể thao chuyên nghiệp mặt kính sạc năng lượng mặt trời', 21990000.000, 18, true, false, NOW(), NULL),
+('prod-029', 'PROD-029', 'Garmin Forerunner 265 Music GPS', 'Đồng hồ chạy bộ màn hình AMOLED rực rỡ và kế hoạch tập luyện cá nhân', 10990000.000, 25, true, false, NOW(), NULL),
+('prod-030', 'PROD-030', 'Huawei Watch GT 4 46mm Dây Da', 'Thời lượng pin ấn tượng 14 ngày hỗ trợ theo dõi giấc ngủ khoa học', 4990000.000, 50, true, false, NOW(), NULL),
+('prod-031', 'PROD-031', 'Sony WH-1000XM5 Tai Nghe Chống Ồn', 'Chống ồn chủ động hàng đầu ngành chip V1 và 8 micro đàm thoại', 7690000.000, 42, true, false, NOW(), NULL),
+('prod-032', 'PROD-032', 'Apple AirPods Pro 2 Cổng Sạc USB-C', 'Chống ồn chủ động gấp 2 lần âm thanh thích ứng và chip H2', 5490000.000, 70, true, false, NOW(), NULL),
+('prod-033', 'PROD-033', 'Bose QuietComfort Ultra Headphones', 'Công nghệ Bose Immersive Audio âm thanh không gian đột phá', 9990000.000, 20, true, false, NOW(), NULL),
+('prod-034', 'PROD-034', 'Marshall Major IV Wireless Bluetooth', 'Thời gian nghe nhạc không dây lên tới 80 giờ sạc nhanh tiện lợi', 3290000.000, 48, true, false, NOW(), NULL),
+('prod-035', 'PROD-035', 'JBL Charge 5 Loa Bluetooth Di Động', 'Kháng nước bụi chuẩn IP67 tích hợp cổng sạc sạc dự phòng điện thoại', 3490000.000, 55, true, false, NOW(), NULL),
+('prod-036', 'PROD-036', 'Marshall Stanmore III Bluetooth Speaker', 'Loa decor cổ điển công suất 80W trường âm thanh nổi rộng hơn', 8990000.000, 26, true, false, NOW(), NULL),
+('prod-037', 'PROD-037', 'Harman Kardon Onyx Studio 8 Di Động', 'Thiết kế tay cầm nhôm tái chế âm thanh tự tinh chỉnh theo không gian phòng', 5290000.000, 32, true, false, NOW(), NULL),
+('prod-038', 'PROD-038', 'Soundbar Samsung HW-Q990D 11.1.4 Kênh', 'Dàn loa thanh soundbar đỉnh cao rạp chiếu phim tại gia chuẩn Dolby Atmos', 21990000.000, 14, true, false, NOW(), NULL),
+('prod-039', 'PROD-039', 'Keychron Q1 Pro QMK Wireless Custom', 'Bàn phím cơ full nhôm CNC mạch xuôi kết nối 3 thiết bị Bluetooth 5.1', 4490000.000, 35, true, false, NOW(), NULL),
+('prod-040', 'PROD-040', 'Logitech MX Mechanical Mini Tactile', 'Bàn phím cơ low-profile yên tĩnh tối ưu cho lập trình viên và văn phòng', 2990000.000, 45, true, false, NOW(), NULL),
+('prod-041', 'PROD-041', 'Razer Huntsman V3 Pro Analog Optical', 'Bàn phím eSports công tắc quang học kích hoạt kép Rapid Trigger cực nhạy', 5990000.000, 22, true, false, NOW(), NULL),
+('prod-042', 'PROD-042', 'Logitech MX Master 3S Chuột Công Thái Học', 'Cuộn siêu tốc Magspeed 1000 dòng/giây click chuột êm ái giảm 90% ồn', 2190000.000, 80, true, false, NOW(), NULL),
+('prod-043', 'PROD-043', 'Razer DeathAdder V3 Pro Wireless 63g', 'Chuột gaming không dây siêu nhẹ cảm biến Focus Pro 30K quang học', 3490000.000, 38, true, false, NOW(), NULL),
+('prod-044', 'PROD-044', 'Logitech G Pro X Superlight 2 Lightspeed', 'Vũ khí vô địch giải đấu bắn súng switch hybrid Lightforce 60g', 3690000.000, 40, true, false, NOW(), NULL),
+('prod-045', 'PROD-045', 'Dell UltraSharp U2723QE 27 4K IPS Black', 'Màn hình đồ họa chuẩn màu 100% sRGB hỗ trợ sạc Type-C 90W PD', 13990000.000, 28, true, false, NOW(), NULL),
+('prod-046', 'PROD-046', 'LG UltraGear 27GR95QE OLED 240Hz 0.03ms', 'Màn hình chơi game OLED chuẩn esports tốc độ phản hồi siêu thực', 18990000.000, 16, true, false, NOW(), NULL),
+('prod-047', 'PROD-047', 'Asus ROG Swift PG32UCDM 4K QD-OLED 240Hz', 'Đỉnh cao hiển thị 32 inch 4K công nghệ Quantum Dot OLED chống chói', 34990000.000, 9, true, false, NOW(), NULL),
+('prod-048', 'PROD-048', 'CPU Intel Core i9-14900K 24 Nhân 32 Luồng', 'Bộ vi xử lý máy tính bàn xung nhịp Turbo tối đa 6.0GHz thế hệ 14', 14890000.000, 20, true, false, NOW(), NULL),
+('prod-049', 'PROD-049', 'CPU AMD Ryzen 7 7800X3D 8 Nhân 16 Luồng', 'Vi xử lý chơi game số một thế giới công nghệ bộ nhớ đệm 3D V-Cache', 9990000.000, 30, true, false, NOW(), NULL),
+('prod-050', 'PROD-050', 'Card Màn Hình ASUS ROG Strix RTX 4080 Super', 'GPU kiến trúc Ada Lovelace 16GB GDDR6X tản nhiệt 3 quạt siêu êm', 33990000.000, 11, true, false, NOW(), NULL),
+('prod-051', 'PROD-051', 'Mainboard ASUS ROG MAXIMUS Z790 HERO', 'Bo mạch chủ cao cấp socket LGA1700 hỗ trợ PCIe 5.0 và DDR5', 16500000.000, 15, true, false, NOW(), NULL),
+('prod-052', 'PROD-052', 'RAM Corsair Vengeance RGB 32GB DDR5 6000', 'Bộ nhớ kit 2x16GB xung cao tản nhiệt nhôm và LED RGB rực rỡ', 3190000.000, 45, true, false, NOW(), NULL),
+('prod-053', 'PROD-053', 'Router WiFi 6 ASUS ROG GT-AX6000 2.5G', 'Bộ định tuyến gaming chuyên dụng 2 cổng 2.5G băng thông kép', 7990000.000, 18, true, false, NOW(), NULL),
+('prod-054', 'PROD-054', 'Hệ Thống WiFi Mesh TP-Link Deco X50 3-Pack', 'Phủ sóng toàn diện ngôi nhà 600m2 chuẩn WiFi 6 tốc độ 3000Mbps', 4690000.000, 25, true, false, NOW(), NULL),
+('prod-055', 'PROD-055', 'Robot Hút Bụi Roborock S8 Pro Ultra', 'Trạm sạc tự giặt giẻ nước nóng sấy khô và lực hút cực đại 6000Pa', 23990000.000, 14, true, false, NOW(), NULL),
+('prod-056', 'PROD-056', 'Khóa Cửa Thông Minh Aqara D100 Zigbee', 'Mở khóa nhận diện vân tay 3D bán dẫn thẻ từ mã số và Apple HomeKey', 6990000.000, 20, true, false, NOW(), NULL),
+('prod-057', 'PROD-057', 'Máy Ảnh Sony Alpha A7 IV Body Chính Hãng', 'Cảm biến Full-frame 33MP quay video 4K 60p lấy nét mắt AI thời gian thực', 53990000.000, 12, true, false, NOW(), NULL),
+('prod-058', 'PROD-058', 'Máy Ảnh Fujifilm X-T5 Mirrorless Body Đen', 'Cảm biến X-Trans CMOS 5 HR 40MP giả lập màu film trứ danh', 39990000.000, 15, true, false, NOW(), NULL),
+('prod-059', 'PROD-059', 'Camera Giám Sát Ngoài Trời Ezviz H8c 2K', 'Xoay 360 độ ban đêm có màu đàm thoại 2 chiều cảnh báo còi hú', 1190000.000, 60, true, false, NOW(), NULL),
+('prod-060', 'PROD-060', 'Action Cam DJI Osmo Action 4 Combo', 'Camera hành trình góc siêu rộng 155 độ cảm biến 1/1.3 inch chống nước', 7890000.000, 24, true, false, NOW(), NULL),
+('prod-061', 'PROD-061', 'Củ Sạc Nhanh Anker Prime 100W GaN 3 Cổng', 'Công nghệ GaN III sạc cùng lúc MacBook, iPhone và iPad nhỏ gọn', 1590000.000, 90, true, false, NOW(), NULL),
+('prod-062', 'PROD-062', 'Pin Sạc Dự Phòng Baseus Blade 100W 20k', 'Pin siêu mỏng sạc máy tính xách tay màn hình kỹ thuật số hiển thị W', 1150000.000, 65, true, false, NOW(), NULL),
+('prod-063', 'PROD-063', 'Ổ Cứng SSD Samsung 990 Pro 2TB NVMe Gen4', 'Tốc độ đọc ghi kỷ lục 7450MB/s 6900MB/s tối ưu hóa PS5 và PC', 4890000.000, 42, true, false, NOW(), NULL),
+('prod-064', 'PROD-064', 'Ổ Cứng Di Động WD My Passport 4TB USB 3.2', 'Sao lưu dữ liệu an toàn bảo mật mật khẩu phần cứng 256-bit AES', 2990000.000, 35, true, false, NOW(), NULL),
+('prod-065', 'PROD-065', 'Máy Chơi Game Sony PlayStation 5 Slim 1TB', 'Console chơi game 4K đồ họa ray-tracing kèm tay cầm DualSense', 13490000.000, 30, true, false, NOW(), NULL),
+('prod-066', 'PROD-066', 'Máy Chơi Game Nintendo Switch OLED Mario Red', 'Phiên bản đặc biệt đỏ Mario màn hình OLED 7 inch chân đế vững chãi', 7890000.000, 0, true, false, NOW(), NULL),
+('prod-067', 'PROD-067', 'Card Màn Hình MSI RTX 4090 SUPRIM X 24G', 'Siêu phẩm đồ họa 24GB GDDR6X cháy hàng trên toàn cầu', 56990000.000, 0, true, false, NOW(), NULL),
+('prod-068', 'PROD-068', 'iPhone 15 Pro Max 1TB Titan Tự Nhiên', 'Phiên bản dung lượng tối đa tạm hết hàng trên hệ thống phân phối', 44990000.000, 0, true, false, NOW(), NULL),
+('prod-069', 'PROD-069', 'Kính Thực Tế Ảo Apple Vision Pro 256GB', 'Không gian điện toán đỉnh cao đang đợi đợt nhập khẩu tiếp theo', 86990000.000, 0, true, false, NOW(), NULL),
+('prod-070', 'PROD-070', 'Laptop Lenovo Legion 9i Core i9 RTX 4090', 'Laptop gaming tản nhiệt nước tích hợp đầu tiên trên thế giới', 119990000.000, 0, true, false, NOW(), NULL),
+('prod-071', 'PROD-071', 'Máy Ảnh Fujifilm X100VI Bạc Limited', 'Chiếc máy ảnh hot nhất năm 2024 đơn đặt trước đã kín', 47990000.000, 0, true, false, NOW(), NULL),
+('prod-072', 'PROD-072', 'Đồng Hồ Garmin Epix Pro Gen 2 51mm Solar', 'Đồng hồ GPS thám hiểm màn hình AMOLED tích hợp đèn pin LED', 27990000.000, 0, true, false, NOW(), NULL),
+('prod-073', 'PROD-073', 'Bàn Phím Cơ Custom Angry Miao Cyberboard R4', 'Bàn phím cơ lấy cảm hứng Tesla Cybertruck màn hình ma trận LED', 18500000.000, 0, true, false, NOW(), NULL),
+('prod-074', 'PROD-074', 'Tai Nghe Sennheiser HD 800 S Audiophile', 'Tai nghe tham chiếu audiophile mở rộng trường âm thanh chân thực', 39990000.000, 0, true, false, NOW(), NULL),
+('prod-075', 'PROD-075', 'Ổ Cứng SSD Crucial T700 4TB Gen5 12400MB', 'SSD PCIe 5.0 tốc độ bàn thờ 12400MB/s tạm cháy hàng tồn kho', 12900000.000, 0, true, false, NOW(), NULL),
+('prod-076', 'PROD-076', 'Điện Thoại BPhone A86 5G Bảo Mật', 'Sản phẩm tạm dừng bán lẻ chờ cập nhật lại chính sách bảo hành', 6990000.000, 30, false, false, NOW(), NULL),
+('prod-077', 'PROD-077', 'Tai Nghe TWS Tronsmart Apollo Air ANC', 'Sản phẩm tạm ẩn trên website để xả hàng tại kênh offline', 850000.000, 45, false, false, NOW(), NULL),
+('prod-078', 'PROD-078', 'Smartwatch Trẻ Em MyKID 4G Viettel', 'Tạm đóng kênh bán online chuẩn bị thay đổi gói cước SIM tặng kèm', 1690000.000, 50, false, false, NOW(), NULL),
+('prod-079', 'PROD-079', 'Router WiFi 4G LTE Huawei B311B Cắm SIM', 'Tạm ngưng phân phối chờ giấy phép kiểm định chất lượng đợt mới', 1250000.000, 28, false, false, NOW(), NULL),
+('prod-080', 'PROD-080', 'Bộ Đàm Cầm Tay Motorola GP-328 Plus', 'Tạm ẩn do yêu cầu kiểm duyệt tần số viễn thông trước khi mở bán', 1450000.000, 15, false, false, NOW(), NULL),
+('prod-081', 'PROD-081', 'Camera Hành Trình Vietmap C61 Pro 4K', 'Tạm ẩn cập nhật dữ liệu cảnh báo giao thông bản quyền mới', 2790000.000, 22, false, false, NOW(), NULL),
+('prod-082', 'PROD-082', 'Chuột Gaming DareU EM901X RGB Wireless', 'Tạm ngưng bán lẻ để phục vụ hợp đồng cung ứng dàn máy Cyber Game', 590000.000, 80, false, false, NOW(), NULL),
+('prod-083', 'PROD-083', 'Bàn Phím Cơ FL-Esports MK870 3 Mode', 'Kit bàn phím tạm ẩn cập nhật lại lô switch và keycap tặng kèm', 1290000.000, 35, false, false, NOW(), NULL),
+('prod-084', 'PROD-084', 'Loa Kéo Nanomax Pro 909 Công Suất Lớn', 'Tạm ẩn kiểm tra lại chứng nhận an toàn phòng cháy pin bình ắc quy', 6490000.000, 10, false, false, NOW(), NULL),
+('prod-085', 'PROD-085', 'Nồi Cơm Điện Thông Minh Xiaomi Smart C1', 'Thiết bị gia dụng smarthome tạm ngừng nhập khẩu', 890000.000, 40, false, false, NOW(), NULL),
+('prod-086', 'PROD-086', 'Máy Đọc Sách Kindle Paperwhite 5 16GB Màn 6.8', 'Màn hình E-ink ánh sáng vàng bảo vệ mắt chống nước IPX8', 3590000.000, 25, true, false, NOW(), NULL),
+('prod-087', 'PROD-087', 'Máy Đọc Sách Kobo Clara 2E Tái Chế', 'Màn hình mực điện tử Carta 1200 chống nước kết nối Bluetooth', 3290000.000, 18, true, false, NOW(), NULL),
+('prod-088', 'PROD-088', 'Máy Đọc Sách Boox Note Air 3 C Màu', 'Chạy Android hỗ trợ bút Wacom ghi chú tài liệu PDF kích thước 10.3 inch', 12990000.000, 12, true, false, NOW(), NULL),
+('prod-089', 'PROD-089', 'Máy In Laser Trắng Đen Canon LBP2900', 'Chiếc máy in huyền thoại cho văn phòng in ấn bền bỉ', 4150000.000, 30, true, false, NOW(), NULL),
+('prod-090', 'PROD-090', 'Máy Quét Scanner Epson Perfection V39 II', 'Độ phân giải 4800 dpi mỏng nhẹ cấp nguồn trực tiếp qua cổng USB', 2190000.000, 15, true, false, NOW(), NULL),
+('prod-091', 'PROD-091', 'iPhone 6s 16GB Vàng Hồng Cũ Kỷ Niệm', 'Sản phẩm lỗi thời đã ngừng hỗ trợ phần mềm đưa vào thùng rác', 1500000.000, 2, false, true, NOW(), '2026-10-10 09:15:00'),
+('prod-092', 'PROD-092', 'Nokia Lumia 1020 41MP Windows Phone', 'Điện thoại hệ điều hành Windows Phone đã ngừng phát triển', 1900000.000, 1, false, true, NOW(), '2026-10-12 11:30:00'),
+('prod-093', 'PROD-093', 'Laptop Sony Vaio Fit 14E Đời Cũ', 'Thương hiệu laptop Vaio cổ điển thanh lý lưu kho thùng rác', 3200000.000, 3, false, true, NOW(), '2026-10-14 14:20:00'),
+('prod-094', 'PROD-094', 'Chuột Bi Lăn Genius Cổng Dây PS/2 Cũ', 'Chuột bi thế hệ cũ không còn tương thích máy tính hiện đại', 50000.000, 10, false, true, NOW(), '2026-10-15 16:45:00'),
+('prod-095', 'PROD-095', 'Cáp Nối VGA Chân Tròn Dài 1.5m Cũ', 'Cáp tín hiệu analog chuẩn cũ ngừng kinh doanh thanh lý', 30000.000, 25, false, true, NOW(), '2026-10-16 08:10:00'),
+('prod-096', 'PROD-096', 'Ổ Đĩa Mềm Floppy Disk USB 1.44MB Cũ', 'Thiết bị đọc đĩa mềm cổ điển cho viện bảo tàng máy tính', 250000.000, 5, false, true, NOW(), '2026-10-18 10:05:00'),
+('prod-097', 'PROD-097', 'RAM DDR2 2GB Bus 800MHz Kingmax Cũ', 'Linh kiện RAM tháo máy đời cũ tồn kho đưa vào thùng rác', 80000.000, 12, false, true, NOW(), '2026-10-20 13:50:00'),
+('prod-098', 'PROD-098', 'Ổ Cứng HDD 160GB Seagate 3.5 Cũ', 'Ổ cứng dung lượng thấp đã tháo máy lỗi sector nhẹ trong thùng rác', 120000.000, 8, false, true, NOW(), '2026-10-22 15:25:00'),
+('prod-099', 'PROD-099', 'Tai Nghe Dây Jack 2.5mm Cho Điện Thoại Cũ', 'Chuẩn jack tai nghe mini 2.5mm lỗi thời đưa vào thùng rác', 40000.000, 20, false, true, NOW(), '2026-10-24 17:00:00'),
+('prod-100', 'PROD-100', 'Máy Nghe Nhạc MP3 iPod Nano Gen 4 8GB Cũ', 'Máy nghe nhạc cổ điển Apple hỏng pin lưu kho thùng rác', 600000.000, 4, false, true, NOW(), '2026-10-25 18:30:00')
+ON CONFLICT (id) DO NOTHING;
+
+-- =============================================================================
+-- 9. BẢNG TRUNG GIAN LIÊN KẾT SẢN PHẨM VÀ DANH MỤC (product_category)
+-- Nghiệp vụ bắt buộc: Mỗi sản phẩm phải thuộc ít nhất 1 danh mục
+-- Một số sản phẩm thuộc nhiều danh mục (N-N quan hệ đa chiều)
+-- =============================================================================
+INSERT INTO product_category (id, product_id, category_id, create_at) VALUES
+('pc-001', 'prod-001', 'cat-01', NOW()),
+('pc-002', 'prod-002', 'cat-01', NOW()),
+('pc-003', 'prod-003', 'cat-01', NOW()),
+('pc-004', 'prod-004', 'cat-01', NOW()),
+('pc-005', 'prod-005', 'cat-01', NOW()),
+('pc-006', 'prod-006', 'cat-01', NOW()),
+('pc-007', 'prod-006', 'cat-16', NOW()),
+('pc-008', 'prod-007', 'cat-01', NOW()),
+('pc-009', 'prod-008', 'cat-01', NOW()),
+('pc-010', 'prod-009', 'cat-01', NOW()),
+('pc-011', 'prod-010', 'cat-01', NOW()),
+('pc-012', 'prod-010', 'cat-13', NOW()),
+('pc-013', 'prod-011', 'cat-02', NOW()),
+('pc-014', 'prod-012', 'cat-02', NOW()),
+('pc-015', 'prod-013', 'cat-02', NOW()),
+('pc-016', 'prod-014', 'cat-02', NOW()),
+('pc-017', 'prod-015', 'cat-02', NOW()),
+('pc-018', 'prod-015', 'cat-16', NOW()),
+('pc-019', 'prod-016', 'cat-02', NOW()),
+('pc-020', 'prod-016', 'cat-16', NOW()),
+('pc-021', 'prod-017', 'cat-02', NOW()),
+('pc-022', 'prod-018', 'cat-02', NOW()),
+('pc-023', 'prod-019', 'cat-03', NOW()),
+('pc-024', 'prod-020', 'cat-03', NOW()),
+('pc-025', 'prod-021', 'cat-03', NOW()),
+('pc-026', 'prod-022', 'cat-03', NOW()),
+('pc-027', 'prod-023', 'cat-03', NOW()),
+('pc-028', 'prod-024', 'cat-03', NOW()),
+('pc-029', 'prod-025', 'cat-04', NOW()),
+('pc-030', 'prod-026', 'cat-04', NOW()),
+('pc-031', 'prod-027', 'cat-04', NOW()),
+('pc-032', 'prod-028', 'cat-04', NOW()),
+('pc-033', 'prod-029', 'cat-04', NOW()),
+('pc-034', 'prod-030', 'cat-04', NOW()),
+('pc-035', 'prod-031', 'cat-05', NOW()),
+('pc-036', 'prod-032', 'cat-05', NOW()),
+('pc-037', 'prod-033', 'cat-05', NOW()),
+('pc-038', 'prod-034', 'cat-05', NOW()),
+('pc-039', 'prod-035', 'cat-06', NOW()),
+('pc-040', 'prod-036', 'cat-06', NOW()),
+('pc-041', 'prod-037', 'cat-06', NOW()),
+('pc-042', 'prod-038', 'cat-06', NOW()),
+('pc-043', 'prod-039', 'cat-07', NOW()),
+('pc-044', 'prod-040', 'cat-07', NOW()),
+('pc-045', 'prod-041', 'cat-07', NOW()),
+('pc-046', 'prod-041', 'cat-16', NOW()),
+('pc-047', 'prod-042', 'cat-08', NOW()),
+('pc-048', 'prod-043', 'cat-08', NOW()),
+('pc-049', 'prod-043', 'cat-16', NOW()),
+('pc-050', 'prod-044', 'cat-08', NOW()),
+('pc-051', 'prod-044', 'cat-16', NOW()),
+('pc-052', 'prod-045', 'cat-09', NOW()),
+('pc-053', 'prod-046', 'cat-09', NOW()),
+('pc-054', 'prod-046', 'cat-16', NOW()),
+('pc-055', 'prod-047', 'cat-09', NOW()),
+('pc-056', 'prod-047', 'cat-16', NOW()),
+('pc-057', 'prod-048', 'cat-10', NOW()),
+('pc-058', 'prod-049', 'cat-10', NOW()),
+('pc-059', 'prod-050', 'cat-10', NOW()),
+('pc-060', 'prod-051', 'cat-10', NOW()),
+('pc-061', 'prod-052', 'cat-10', NOW()),
+('pc-062', 'prod-053', 'cat-11', NOW()),
+('pc-063', 'prod-054', 'cat-11', NOW()),
+('pc-064', 'prod-055', 'cat-12', NOW()),
+('pc-065', 'prod-056', 'cat-12', NOW()),
+('pc-066', 'prod-057', 'cat-13', NOW()),
+('pc-067', 'prod-058', 'cat-13', NOW()),
+('pc-068', 'prod-059', 'cat-13', NOW()),
+('pc-069', 'prod-059', 'cat-12', NOW()),
+('pc-070', 'prod-060', 'cat-13', NOW()),
+('pc-071', 'prod-061', 'cat-14', NOW()),
+('pc-072', 'prod-062', 'cat-14', NOW()),
+('pc-073', 'prod-063', 'cat-15', NOW()),
+('pc-074', 'prod-063', 'cat-10', NOW()),
+('pc-075', 'prod-064', 'cat-15', NOW()),
+('pc-076', 'prod-065', 'cat-16', NOW()),
+('pc-077', 'prod-066', 'cat-16', NOW()),
+('pc-078', 'prod-067', 'cat-10', NOW()),
+('pc-079', 'prod-068', 'cat-01', NOW()),
+('pc-080', 'prod-069', 'cat-16', NOW()),
+('pc-081', 'prod-070', 'cat-02', NOW()),
+('pc-082', 'prod-070', 'cat-16', NOW()),
+('pc-083', 'prod-071', 'cat-13', NOW()),
+('pc-084', 'prod-072', 'cat-04', NOW()),
+('pc-085', 'prod-073', 'cat-07', NOW()),
+('pc-086', 'prod-074', 'cat-05', NOW()),
+('pc-087', 'prod-075', 'cat-15', NOW()),
+('pc-088', 'prod-075', 'cat-10', NOW()),
+('pc-089', 'prod-076', 'cat-01', NOW()),
+('pc-090', 'prod-077', 'cat-05', NOW()),
+('pc-091', 'prod-078', 'cat-04', NOW()),
+('pc-092', 'prod-079', 'cat-11', NOW()),
+('pc-093', 'prod-080', 'cat-11', NOW()),
+('pc-094', 'prod-081', 'cat-13', NOW()),
+('pc-095', 'prod-082', 'cat-08', NOW()),
+('pc-096', 'prod-082', 'cat-16', NOW()),
+('pc-097', 'prod-083', 'cat-07', NOW()),
+('pc-098', 'prod-084', 'cat-06', NOW()),
+('pc-099', 'prod-085', 'cat-12', NOW()),
+('pc-100', 'prod-086', 'cat-17', NOW()),
+('pc-101', 'prod-087', 'cat-17', NOW()),
+('pc-102', 'prod-088', 'cat-17', NOW()),
+('pc-103', 'prod-089', 'cat-18', NOW()),
+('pc-104', 'prod-090', 'cat-18', NOW()),
+('pc-105', 'prod-091', 'cat-01', NOW()),
+('pc-106', 'prod-092', 'cat-01', NOW()),
+('pc-107', 'prod-093', 'cat-02', NOW()),
+('pc-108', 'prod-094', 'cat-08', NOW()),
+('pc-109', 'prod-094', 'cat-19', NOW()),
+('pc-110', 'prod-095', 'cat-14', NOW()),
+('pc-111', 'prod-095', 'cat-19', NOW()),
+('pc-112', 'prod-096', 'cat-15', NOW()),
+('pc-113', 'prod-096', 'cat-19', NOW()),
+('pc-114', 'prod-097', 'cat-10', NOW()),
+('pc-115', 'prod-097', 'cat-20', NOW()),
+('pc-116', 'prod-098', 'cat-15', NOW()),
+('pc-117', 'prod-098', 'cat-20', NOW()),
+('pc-118', 'prod-099', 'cat-05', NOW()),
+('pc-119', 'prod-099', 'cat-19', NOW()),
+('pc-120', 'prod-100', 'cat-06', NOW()),
+('pc-121', 'prod-100', 'cat-19', NOW())
+ON CONFLICT (id) DO NOTHING;
+
+

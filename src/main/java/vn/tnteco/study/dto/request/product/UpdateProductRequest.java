@@ -5,6 +5,7 @@ import lombok.*;
 import lombok.experimental.FieldDefaults;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 @Data
 @NoArgsConstructor
@@ -31,4 +32,7 @@ public class UpdateProductRequest {
     Integer quantity;
 
     Boolean active;
+
+    List<String> categoryIds;
+
 }

@@ -5,6 +5,7 @@ import lombok.*;
 import lombok.experimental.FieldDefaults;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 @Data
 @NoArgsConstructor
@@ -29,5 +30,9 @@ public class CreateProductRequest {
     @NotNull(message = "Số lượng không được để trống")
     @Min(value = 0, message = "Số lượng phải lớn hơn hoặc bằng 0")
     Integer quantity;
+
+    @NotEmpty(message = "Sản phẩm phải thuộc ít nhất một danh mục")
+    List<String> categoryIds;
+
 
 }

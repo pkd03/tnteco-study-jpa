@@ -4,6 +4,7 @@ import lombok.*;
 import lombok.experimental.FieldDefaults;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 @Data
 @NoArgsConstructor
@@ -26,4 +27,7 @@ public class ProductResponseForAdmin {
     Boolean active;
 
     boolean isDelete;
+
+    List<String> categoryIds;
+
 }

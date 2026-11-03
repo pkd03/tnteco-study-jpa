@@ -21,6 +21,13 @@ import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * Filter chặn mọi HTTP Request đến ứng dụng:
+ * 1. Đọc và xác thực tính hợp lệ của JWT Token từ Authorization Header.
+ * 2. Đọc trực tiếp Claim 'authorities' chứa các Permission Code.
+ * 3. Chuyển đổi trực tiếp thành SimpleGrantedAuthority để set vào SecurityContextHolder.
+ * Không truy vấn lại Database tại đây để đảm bảo mô hình Stateless hiệu năng cao.
+ */
 @Component
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
@@ -35,30 +42,44 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         String token = resolveToken(request);
 
-        // Nếu có token và token hợp lệ
+        // 1. Kiểm tra sự tồn tại và tính hợp lệ của JWT Token
         if (StringUtils.hasText(token) && jwtTokenProvider.validateToken(token)) {
             String username = jwtTokenProvider.extractUsername(token);
-            List<String> roles = jwtTokenProvider.extractRoles(token);
+            List<String> permissions = jwtTokenProvider.extractAuthorities(token);
 
-            // Chuyển role thành SimpleGrantedAuthority (định dạng ROLE_TÊN_QUYỀN)
-            List<GrantedAuthority> authorities = (roles != null)
-                    ? roles.stream()
-                    .map(role -> new SimpleGrantedAuthority("ROLE_" + role))
+            /**
+             * CHUYỂN ĐỔI QUYỀN HẠN SANG SIMPLEGRANTEDAUTHORITY:
+             * Đoạn này làm gì:
+             * - Lấy từng chuỗi quyền (ví dụ: "product:read", "product:create") tạo thành SimpleGrantedAuthority.
+             * - TUYỆT ĐỐI KHÔNG thêm tiền tố "ROLE_".
+             * Tại sao làm vậy:
+             * - Để tương thích chính xác với cú pháp @PreAuthorize("hasAuthority('product:read')") trên Controller.
+             * - Tách rời hoàn toàn khỏi mô hình role-based truyền thống.
+             */
+            List<GrantedAuthority> authorities = (permissions != null)
+                    ? permissions.stream()
+                    .filter(StringUtils::hasText)
+                    .map(SimpleGrantedAuthority::new)
                     .collect(Collectors.toList())
                     : Collections.emptyList();
-            ;
 
-            // Tạo đối tượng Authentication
+            // 2. Khởi tạo đối tượng Authentication đại diện cho User hiện tại
             UsernamePasswordAuthenticationToken authentication =
                     new UsernamePasswordAuthenticationToken(username, null, authorities);
             authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
 
-            // Đặt vào SecurityContext để Spring Security biết User hiện tại có quyền gì
+            // 3. Đưa thông tin xác thực vào SecurityContextHolder để Spring Security kiểm soát phân quyền
             SecurityContextHolder.getContext().setAuthentication(authentication);
         }
+
+        // Chuyển tiếp request cho filter tiếp theo trong chuỗi FilterChain
         filterChain.doFilter(request, response);
     }
 
+    /**
+     * Đoạn này làm gì: Lấy chuỗi Bearer Token từ Header 'Authorization'.
+     * Tại sao làm vậy: Chuẩn giao thức OAuth2 / JWT truyền token qua dạng 'Bearer <token>'.
+     */
     private String resolveToken(HttpServletRequest request) {
         String bearerToken = request.getHeader("Authorization");
         if (StringUtils.hasText(bearerToken) && bearerToken.startsWith("Bearer ")) {

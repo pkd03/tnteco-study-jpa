@@ -16,6 +16,6 @@ public class LoginRequest {
     String username;
 
     @NotBlank(message = "Password là bắt buộc")
-    @Size(max = 6, message = "Mã sản phẩm tối thiểu 6 ký tự")
+    @Size(min = 6, message = "Mật khẩu tối thiểu 6 ký tự")
     String password;
 }

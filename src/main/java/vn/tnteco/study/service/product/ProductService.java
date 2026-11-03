@@ -2,6 +2,7 @@ package vn.tnteco.study.service.product;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.web.bind.annotation.RequestBody;
 import vn.tnteco.study.dto.request.product.CreateProductRequest;
 import vn.tnteco.study.dto.request.product.UpdateProductRequest;
 import vn.tnteco.study.dto.response.product.ProductResponseForAdmin;

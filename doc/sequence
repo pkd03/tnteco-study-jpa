@@ -1,0 +1,78 @@
+LOGIN
+
+sequenceDiagram
+actor User as Client
+participant FE as Frontend Application
+participant BE as Backend
+participant DB as PostgreSQL DB
+autonumber
+
+    User->>FE: Nhập username/password & nhấn Đăng nhập
+    FE->>FE: Validate
+    alt Nhập password dưới 8 ký tự, bỏ trống 1 hoặc cả 2 trường
+        FE-->>User: Trả lỗi tương ứng
+    else  Điền đầy đủ trường, nhập password trên 8 ký tự
+        FE->>BE: POST /api/v1/auth/login
+        activate BE
+        BE->>BE: Validate
+         alt Request trống 1 hoặc cả 2 trường, password dưới 8 ký tự
+        BE-->>FE: Trả lỗi HTTP 400
+        deactivate BE
+        FE-->>User: Trả lỗi tương ứng
+        else  Điền đầy đủ trường, nhập password trên 8 ký tự
+        
+    BE->>DB: Query username có tồn tại không?
+    activate DB
+    alt username không tồn tại
+    DB-->>BE: Kết quả rỗng
+    BE-->>FE: Trả lỗi HTTP 401 
+    FE-->>User: Hiển thị thông báo "Username hoặc password không đúng"
+    else username tồn tại
+    DB-->>BE: username và password đã hash
+    deactivate DB
+    BE->>BE: match(password input, password hashed)
+    alt password sai
+    BE-->>FE: Trả lỗi HTTP 401
+    FE-->>User: Hiển thị thông báo "Username hoặc password không đúng"
+    else password đúng
+    BE-->>FE: Trả response đăng nhập thành công
+    FE->>FE: Lưu JWT token vào LocalStorage
+    FE-->>User: Thông báo đăng nhập thành công, chuyển hướng sang trang chính
+    end
+    end
+    end
+    end
+
+getproductforadmin
+sequenceDiagram
+    actor AD as ADMIN
+    participant FE as Frontend Application
+    participant BE as Backend
+    participant DB as PostgreSQL DB
+    autonumber
+
+AD->>FE: Chọn xem danh sách sản phẩm
+FE->>FE: Lấy JWT token từ LocalStorage
+alt Không có JWT token trong LocalStorage
+    FE-->>AD: Hiển thị thông báo chưa đăng nhập <br/> Chuyển sang trang login
+
+else Có JWT token trong LocalStorage
+    FE->>BE: GET /api/v1/admin/product
+    BE->>BE: Xác thực JWT token<br/>(Xác minh chữ ký & hạn)
+    alt Token hết hạn, không hợp lệ
+        BE-->>FE: Trả lỗi HTTP 401
+    else Token hợp lệ
+        BE-->>BE: Kiểm tra phân quyền RBAC
+        alt Không đủ quyền hạn
+            BE-->>FE: Trả lỗi HTTP 403
+            FE-->>AD: Hiển thị thông báo từ chối quyền truy cập
+        else Đủ quyền hạn
+            BE->>BE: Kiểm tra sorting
+            BE->>DB: Query Product isDelete=false
+            DB->>BE: Trả danh sách Entity Product & TotalElements
+            BE->>BE: Map Entity sang DTO
+            BE-->>FE: Trả HTTP 200 kèm DTO danh sách product có phân trang
+            FE-->>AD: Hiển thị giao diện danh sách sản phẩm
+        end
+    end
+end

@@ -1,8 +1,8 @@
 {
     "info": {
         "_postman_id": "a9b1c2d3-e4f5-4678-90ab-cdef12345678",
-        "name": "Product Management API Tests",
-        "description": "Bộ test collection Postman đầy đủ cho dự án Study Product Management, cập nhật chính xác theo các controller hiện tại (AuthController, ProductControllerAdmin và ProductControllerClient), bao gồm tự động lưu Bearer Token đăng nhập, toàn bộ luồng nghiệp vụ Thùng rác (Xóa mềm, Xóa cứng, Khôi phục, Trùng lặp), các trường hợp ngoại lệ (Validate, Conflict, Not Found) và kiểm tra nhập sai đường dẫn trả về 404 Not Found thay vì 403.",
+        "name": "Product & Category Management API - Fine-grained RBAC Tests",
+        "description": "Bộ test collection Postman toàn diện cho hệ thống Fine-grained RBAC và Quản lý Sản phẩm / Danh mục E-commerce.\nBao gồm:\n1. Xác thực JWT (Admin & Staff).\n2. Quản lý Danh mục (Category CRUD, Soft Delete, Restore).\n3. Quản lý Sản phẩm (Gắn Category N-N, Partial Unique Logic, Thùng rác).\n4. Khách hàng (Client API công khai, ẩn theo Category cha inactive, Sorting Whitelist).\n5. Kiểm thử Phân quyền Chi tiết (Staff bị 403 khi tạo/xóa, 200 khi xem/sửa).\n6. Bắt lỗi ngoại lệ và sai đường dẫn 404 Not Found thay vì 403.",
         "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
     },
     "variable": [
@@ -18,11 +18,36 @@
         },
         {
             "key": "adminPassword",
-            "value": "admin123",
+            "value": "123456",
             "type": "string"
         },
         {
             "key": "adminToken",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "staffUsername",
+            "value": "staff",
+            "type": "string"
+        },
+        {
+            "key": "staffPassword",
+            "value": "123456",
+            "type": "string"
+        },
+        {
+            "key": "staffToken",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "createdCategoryId",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "inactiveCategoryId",
             "value": "",
             "type": "string"
         },
@@ -47,7 +72,7 @@
             "name": "00. Authentication - Xác thực (JWT)",
             "item": [
                 {
-                    "name": "0.1 Đăng nhập tài khoản Admin (Lấy Token)",
+                    "name": "0.1 Đăng nhập tài khoản Admin (Lưu adminToken)",
                     "event": [
                         {
                             "listen": "test",
@@ -57,10 +82,15 @@
                                     "    var jsonData = pm.response.json();",
                                     "    if (jsonData.token) {",
                                     "        pm.collectionVariables.set('adminToken', jsonData.token);",
-                                    "        console.log('Saved adminToken:', jsonData.token);",
+                                    "        console.log('Saved adminToken');",
                                     "    }",
-                                    "    pm.test('Đăng nhập thành công và có token', function () {",
+                                    "    pm.test('Đăng nhập Admin thành công và có token', function () {",
                                     "        pm.expect(jsonData.token).to.not.be.empty;",
+                                    "    });",
+                                    "    pm.test('Admin sở hữu đầy đủ permissions', function () {",
+                                    "        pm.expect(jsonData.authorities).to.include('product:read');",
+                                    "        pm.expect(jsonData.authorities).to.include('product:create');",
+                                    "        pm.expect(jsonData.authorities).to.include('product:delete');",
                                     "    });",
                                     "}"
                                 ],
@@ -92,14 +122,67 @@
                             ]
                         }
                     }
+                },
+                {
+                    "name": "0.2 Đăng nhập tài khoản Staff (Lưu staffToken)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "if (pm.response.code === 200) {",
+                                    "    var jsonData = pm.response.json();",
+                                    "    if (jsonData.token) {",
+                                    "        pm.collectionVariables.set('staffToken', jsonData.token);",
+                                    "        console.log('Saved staffToken');",
+                                    "    }",
+                                    "    pm.test('Đăng nhập Staff thành công', function () {",
+                                    "        pm.expect(jsonData.token).to.not.be.empty;",
+                                    "    });",
+                                    "    pm.test('Staff chỉ có quyền xem và sửa sản phẩm', function () {",
+                                    "        pm.expect(jsonData.authorities).to.include('product:read');",
+                                    "        pm.expect(jsonData.authorities).to.include('product:update');",
+                                    "        pm.expect(jsonData.authorities).to.not.include('product:create');",
+                                    "        pm.expect(jsonData.authorities).to.not.include('product:delete');",
+                                    "    });",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"username\": \"{{staffUsername}}\",\n    \"password\": \"{{staffPassword}}\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/auth/login",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "auth",
+                                "login"
+                            ]
+                        }
+                    }
                 }
             ]
         },
         {
-            "name": "01. Admin - Luồng cơ bản (Happy Path)",
+            "name": "01. Quản lý Danh mục (Category - Admin & Client)",
             "item": [
                 {
-                    "name": "1.1 Tạo sản phẩm SP001 thành công",
+                    "name": "1.1 Tạo danh mục CAT01 (Admin - Lưu createdCategoryId)",
                     "event": [
                         {
                             "listen": "test",
@@ -107,12 +190,11 @@
                                 "exec": [
                                     "if (pm.response.code === 200 || pm.response.code === 201) {",
                                     "    var jsonData = pm.response.json();",
-                                    "    if (jsonData.id) {",
-                                    "        pm.collectionVariables.set('createdProductId', jsonData.id);",
-                                    "        console.log('Saved createdProductId:', jsonData.id);",
-                                    "    }",
-                                    "    pm.test('Tạo SP001 thành công', function () {",
-                                    "        pm.expect(jsonData.code).to.eql('SP001');",
+                                    "    pm.collectionVariables.set('createdCategoryId', jsonData.id);",
+                                    "    console.log('Saved createdCategoryId:', jsonData.id);",
+                                    "    pm.test('Tạo danh mục CAT01 thành công', function () {",
+                                    "        pm.expect(jsonData.code).to.eql('CAT01');",
+                                    "        pm.expect(jsonData.active).to.be.true;",
                                     "    });",
                                     "}"
                                 ],
@@ -134,7 +216,188 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"code\": \"SP001\",\n    \"name\": \"Bàn phím cơ DareU EK87\",\n    \"description\": \"Bàn phím cơ gaming switch Blue\",\n    \"price\": 590000,\n    \"quantity\": 25\n}"
+                            "raw": "{\n    \"code\": \"CAT01\",\n    \"name\": \"Thiết bị điện tử & Phụ kiện\",\n    \"description\": \"Danh mục các sản phẩm gaming gear\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/admin/categories",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "admin",
+                                "categories"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "1.2 Tạo danh mục CAT_INACTIVE (Admin - Dùng test ẩn sản phẩm Client)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "if (pm.response.code === 200 || pm.response.code === 201) {",
+                                    "    var jsonData = pm.response.json();",
+                                    "    pm.collectionVariables.set('inactiveCategoryId', jsonData.id);",
+                                    "    console.log('Saved inactiveCategoryId:', jsonData.id);",
+                                    "    pm.test('Tạo danh mục CAT_INACTIVE thành công', function () {",
+                                    "        pm.expect(jsonData.code).to.eql('CAT_INACTIVE');",
+                                    "    });",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{adminToken}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"code\": \"CAT_INACTIVE\",\n    \"name\": \"Danh mục theo mùa vụ (Tạm ẩn)\",\n    \"description\": \"Danh mục này sẽ bị tắt active để kiểm tra sản phẩm con bị ẩn\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/admin/categories",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "admin",
+                                "categories"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "1.3 Lấy danh sách danh mục Admin (Phân trang)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Admin xem danh sách danh mục 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{adminToken}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/admin/categories?page=0&size=10",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "admin",
+                                "categories"
+                            ],
+                            "query": [
+                                {
+                                    "key": "page",
+                                    "value": "0"
+                                },
+                                {
+                                    "key": "size",
+                                    "value": "10"
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "1.4 Khách xem danh sách danh mục mở bán (Client - Không cần token)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Khách xem danh mục 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/client/categories",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "client",
+                                "categories"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "02. Admin - Quản lý Sản phẩm (Happy Path)",
+            "item": [
+                {
+                    "name": "2.1 Tạo sản phẩm SP001 (Gắn vào Category CAT01)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "if (pm.response.code === 200 || pm.response.code === 201) {",
+                                    "    var jsonData = pm.response.json();",
+                                    "    pm.collectionVariables.set('createdProductId', jsonData.id);",
+                                    "    console.log('Saved createdProductId:', jsonData.id);",
+                                    "    pm.test('Tạo SP001 thành công', function () {",
+                                    "        pm.expect(jsonData.code).to.eql('SP001');",
+                                    "        pm.expect(jsonData.categoryIds).to.include(pm.collectionVariables.get('createdCategoryId'));",
+                                    "    });",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{adminToken}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"code\": \"SP001\",\n    \"name\": \"Bàn phím cơ DareU EK87\",\n    \"description\": \"Bàn phím cơ gaming switch Blue\",\n    \"price\": 590000,\n    \"quantity\": 25,\n    \"categoryIds\": [\"{{createdCategoryId}}\"]\n}"
                         },
                         "url": {
                             "raw": "{{baseUrl}}/api/admin/products",
@@ -150,7 +413,7 @@
                     }
                 },
                 {
-                    "name": "1.2 Tạo sản phẩm SP002 (dùng để test thùng rác & khôi phục)",
+                    "name": "2.2 Tạo sản phẩm SP002 (Dùng test thùng rác & khôi phục)",
                     "event": [
                         {
                             "listen": "test",
@@ -158,10 +421,8 @@
                                 "exec": [
                                     "if (pm.response.code === 200 || pm.response.code === 201) {",
                                     "    var jsonData = pm.response.json();",
-                                    "    if (jsonData.id) {",
-                                    "        pm.collectionVariables.set('softDeletedProductId', jsonData.id);",
-                                    "        console.log('Saved softDeletedProductId:', jsonData.id);",
-                                    "    }",
+                                    "    pm.collectionVariables.set('softDeletedProductId', jsonData.id);",
+                                    "    console.log('Saved softDeletedProductId:', jsonData.id);",
                                     "    pm.test('Tạo SP002 thành công', function () {",
                                     "        pm.expect(jsonData.code).to.eql('SP002');",
                                     "    });",
@@ -185,7 +446,7 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"code\": \"SP002\",\n    \"name\": \"Chuột không dây Logitech G304\",\n    \"description\": \"Chuột gaming không dây 12000 DPI\",\n    \"price\": 790000,\n    \"quantity\": 40\n}"
+                            "raw": "{\n    \"code\": \"SP002\",\n    \"name\": \"Chuột không dây Logitech G304\",\n    \"description\": \"Chuột gaming không dây 12000 DPI\",\n    \"price\": 790000,\n    \"quantity\": 40,\n    \"categoryIds\": [\"{{createdCategoryId}}\"]\n}"
                         },
                         "url": {
                             "raw": "{{baseUrl}}/api/admin/products",
@@ -201,13 +462,13 @@
                     }
                 },
                 {
-                    "name": "1.3 Lấy danh sách sản phẩm quản lý (Phân trang & Sort)",
+                    "name": "2.3 Lấy danh sách sản phẩm quản lý (Admin - Phân trang & Sort)",
                     "event": [
                         {
                             "listen": "test",
                             "script": {
                                 "exec": [
-                                    "pm.test('Status code is 200', function () {",
+                                    "pm.test('Admin lấy danh sách SP 200 OK', function () {",
                                     "    pm.response.to.have.status(200);",
                                     "});"
                                 ],
@@ -251,13 +512,13 @@
                     }
                 },
                 {
-                    "name": "1.4 Lấy chi tiết sản phẩm theo ID (Admin)",
+                    "name": "2.4 Lấy chi tiết sản phẩm theo ID (Admin)",
                     "event": [
                         {
                             "listen": "test",
                             "script": {
                                 "exec": [
-                                    "pm.test('Status code is 200', function () {",
+                                    "pm.test('Admin xem chi tiết SP 200 OK', function () {",
                                     "    pm.response.to.have.status(200);",
                                     "});"
                                 ],
@@ -288,13 +549,13 @@
                     }
                 },
                 {
-                    "name": "1.5 Cập nhật sản phẩm SP001 thành công",
+                    "name": "2.5 Cập nhật sản phẩm SP001 thành công",
                     "event": [
                         {
                             "listen": "test",
                             "script": {
                                 "exec": [
-                                    "pm.test('Status code is 200', function () {",
+                                    "pm.test('Admin cập nhật SP 200 OK', function () {",
                                     "    pm.response.to.have.status(200);",
                                     "});"
                                 ],
@@ -316,7 +577,7 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"code\": \"SP001\",\n    \"name\": \"Bàn phím cơ DareU EK87 V2\",\n    \"description\": \"Bàn phím cơ nâng cấp switch Red êm hơn\",\n    \"price\": 650000,\n    \"quantity\": 30,\n    \"active\": true\n}"
+                            "raw": "{\n    \"code\": \"SP001\",\n    \"name\": \"Bàn phím cơ DareU EK87 V2 Pro\",\n    \"description\": \"Nâng cấp switch Red êm hơn\",\n    \"price\": 650000,\n    \"quantity\": 30,\n    \"active\": true\n}"
                         },
                         "url": {
                             "raw": "{{baseUrl}}/api/admin/products/{{createdProductId}}",
@@ -333,13 +594,13 @@
                     }
                 },
                 {
-                    "name": "1.6 Xóa mềm sản phẩm SP002 (chuyển vào thùng rác)",
+                    "name": "2.6 Xóa mềm sản phẩm SP002 (Đưa vào thùng rác)",
                     "event": [
                         {
                             "listen": "test",
                             "script": {
                                 "exec": [
-                                    "pm.test('Status code is 200', function () {",
+                                    "pm.test('Xóa mềm SP thành công', function () {",
                                     "    pm.response.to.have.status(200);",
                                     "});"
                                 ],
@@ -370,13 +631,13 @@
                     }
                 },
                 {
-                    "name": "1.7 Xem danh sách thùng rác (Admin - Bin)",
+                    "name": "2.7 Xem danh sách thùng rác (Admin - Bin)",
                     "event": [
                         {
                             "listen": "test",
                             "script": {
                                 "exec": [
-                                    "pm.test('Status code is 200', function () {",
+                                    "pm.test('Xem thùng rác 200 OK', function () {",
                                     "    pm.response.to.have.status(200);",
                                     "});"
                                 ],
@@ -421,13 +682,13 @@
                     }
                 },
                 {
-                    "name": "1.8 Khôi phục SP002 từ thùng rác (Restore)",
+                    "name": "2.8 Khôi phục SP002 từ thùng rác (Restore)",
                     "event": [
                         {
                             "listen": "test",
                             "script": {
                                 "exec": [
-                                    "pm.test('Status code is 200', function () {",
+                                    "pm.test('Khôi phục SP thành công', function () {",
                                     "    pm.response.to.have.status(200);",
                                     "});"
                                 ],
@@ -460,7 +721,7 @@
                     }
                 },
                 {
-                    "name": "1.9 Xóa mềm lại SP002 để test xóa cứng",
+                    "name": "2.9 Xóa mềm lại SP002 để test xóa cứng",
                     "event": [
                         {
                             "listen": "test",
@@ -497,13 +758,13 @@
                     }
                 },
                 {
-                    "name": "1.10 Xóa cứng SP002 (Hard Delete)",
+                    "name": "2.10 Xóa cứng SP002 (Hard Delete)",
                     "event": [
                         {
                             "listen": "test",
                             "script": {
                                 "exec": [
-                                    "pm.test('Status code is 200', function () {",
+                                    "pm.test('Xóa vĩnh viễn SP thành công', function () {",
                                     "    pm.response.to.have.status(200);",
                                     "});"
                                 ],
@@ -542,16 +803,16 @@
             ]
         },
         {
-            "name": "02. Client - Luồng khách hàng (Happy Path)",
+            "name": "03. Client - Luồng khách hàng & Nghiệp vụ phân tầng",
             "item": [
                 {
-                    "name": "2.1 Khách xem tất cả sản phẩm (Phân trang mặc định)",
+                    "name": "3.1 Khách xem tất cả sản phẩm (Phân trang mặc định)",
                     "event": [
                         {
                             "listen": "test",
                             "script": {
                                 "exec": [
-                                    "pm.test('Status code is 200', function () {",
+                                    "pm.test('Khách xem danh sách sản phẩm 200 OK', function () {",
                                     "    pm.response.to.have.status(200);",
                                     "});"
                                 ],
@@ -586,19 +847,18 @@
                     }
                 },
                 {
-                    "name": "2.2 Khách xem chi tiết sản phẩm theo ID (Ẩn code & active)",
+                    "name": "3.2 Khách xem chi tiết sản phẩm theo ID (Ẩn code & active)",
                     "event": [
                         {
                             "listen": "test",
                             "script": {
                                 "exec": [
-                                    "pm.test('Status code is 200', function () {",
+                                    "pm.test('Khách xem chi tiết SP 200 OK', function () {",
                                     "    pm.response.to.have.status(200);",
                                     "});",
-                                    "pm.test('Response không chứa field code và active', function () {",
+                                    "pm.test('Response không lộ thông tin code quản trị', function () {",
                                     "    var jsonData = pm.response.json();",
                                     "    pm.expect(jsonData.code).to.be.undefined;",
-                                    "    pm.expect(jsonData.active).to.be.undefined;",
                                     "});"
                                 ],
                                 "type": "text/javascript"
@@ -621,14 +881,130 @@
                             ]
                         }
                     }
-                }
-            ]
-        },
-        {
-            "name": "03. Nghiệp vụ Thùng rác & Trùng lặp (Thêm / Sửa / Khôi phục)",
-            "item": [
+                },
                 {
-                    "name": "3.1 Chuẩn bị: Tạo SP_TRASH_TEST",
+                    "name": "3.3 Sorting Whitelist - Sắp xếp theo giá tăng dần (price,asc)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Sort hợp lệ theo whitelist thành công 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/client/products?sort=price,asc",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "client",
+                                "products"
+                            ],
+                            "query": [
+                                {
+                                    "key": "sort",
+                                    "value": "price,asc"
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "3.4 Sorting Whitelist - Sort field lạ ngoài whitelist (Fallback an toàn)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Truyền sort sai field không bị crash 500, tự fallback về 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/client/products?sort=truong_khong_ton_tai,desc",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "client",
+                                "products"
+                            ],
+                            "query": [
+                                {
+                                    "key": "sort",
+                                    "value": "truong_khong_ton_tai,desc"
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "3.5 [Nghiệp vụ phân tầng] Tắt active danh mục CAT_INACTIVE",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Tắt active danh mục thành công', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "    var jsonData = pm.response.json();",
+                                    "    pm.expect(jsonData.active).to.be.false;",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{adminToken}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"code\": \"CAT_INACTIVE\",\n    \"name\": \"Danh mục theo mùa vụ (Đã tắt)\",\n    \"active\": false\n}"
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/admin/categories/{{inactiveCategoryId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "admin",
+                                "categories",
+                                "{{inactiveCategoryId}}"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "3.6 [Nghiệp vụ phân tầng] Tạo sản phẩm gắn vào danh mục đã tắt active",
                     "event": [
                         {
                             "listen": "test",
@@ -636,10 +1012,10 @@
                                 "exec": [
                                     "if (pm.response.code === 200 || pm.response.code === 201) {",
                                     "    var jsonData = pm.response.json();",
-                                    "    if (jsonData.id) {",
-                                    "        pm.collectionVariables.set('conflictProductId', jsonData.id);",
-                                    "        console.log('Saved conflictProductId:', jsonData.id);",
-                                    "    }",
+                                    "    pm.collectionVariables.set('conflictProductId', jsonData.id);",
+                                    "    pm.test('Tạo sản phẩm SP_INACTIVE_CAT thành công trong Admin', function () {",
+                                    "        pm.expect(jsonData.code).to.eql('SP_INACTIVE_CAT');",
+                                    "    });",
                                     "}"
                                 ],
                                 "type": "text/javascript"
@@ -660,7 +1036,7 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"code\": \"SP_TRASH\",\n    \"name\": \"Sản phẩm test trùng với thùng rác\",\n    \"description\": \"SP này sẽ được chuyển vào thùng rác\",\n    \"price\": 100000,\n    \"quantity\": 10\n}"
+                            "raw": "{\n    \"code\": \"SP_INACTIVE_CAT\",\n    \"name\": \"Bánh trung thu cao cấp\",\n    \"price\": 350000,\n    \"quantity\": 100,\n    \"categoryIds\": [\"{{inactiveCategoryId}}\"]\n}"
                         },
                         "url": {
                             "raw": "{{baseUrl}}/api/admin/products",
@@ -676,7 +1052,89 @@
                     }
                 },
                 {
-                    "name": "3.2 Chuẩn bị: Xóa SP_TRASH vào thùng rác",
+                    "name": "3.7 [Nghiệp vụ phân tầng] Khách xem SP_INACTIVE_CAT bị ẩn hoàn toàn (404 Not Found)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Khách không thể xem sản phẩm thuộc danh mục inactive (404 Not Found)', function () {",
+                                    "    pm.response.to.have.status(404);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/client/products/{{conflictProductId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "client",
+                                "products",
+                                "{{conflictProductId}}"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "04. Nghiệp vụ Thùng rác & Trùng lặp (Partial Unique Index)",
+            "item": [
+                {
+                    "name": "4.1 Chuẩn bị: Tạo SP_TRASH",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "if (pm.response.code === 200 || pm.response.code === 201) {",
+                                    "    var jsonData = pm.response.json();",
+                                    "    pm.collectionVariables.set('conflictProductId', jsonData.id);",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{adminToken}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"code\": \"SP_TRASH\",\n    \"name\": \"Sản phẩm test trùng với thùng rác\",\n    \"description\": \"SP này sẽ được chuyển vào thùng rác\",\n    \"price\": 100000,\n    \"quantity\": 10,\n    \"categoryIds\": [\"{{createdCategoryId}}\"]\n}"
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/admin/products",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "admin",
+                                "products"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "4.2 Chuẩn bị: Xóa SP_TRASH vào thùng rác",
                     "event": [
                         {
                             "listen": "test",
@@ -713,7 +1171,7 @@
                     }
                 },
                 {
-                    "name": "3.3 [Nghiệp vụ] Thêm mới TRÙNG code với SP trong thùng rác (Kỳ vọng: THÀNH CÔNG)",
+                    "name": "4.3 [Nghiệp vụ] Thêm mới TRÙNG code với SP trong thùng rác (Kỳ vọng: THÀNH CÔNG)",
                     "event": [
                         {
                             "listen": "test",
@@ -741,7 +1199,7 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"code\": \"SP_TRASH\",\n    \"name\": \"Sản phẩm mới tái sử dụng mã SP_TRASH\",\n    \"description\": \"Code trùng với sản phẩm trong thùng rác nhưng phải tạo thành công\",\n    \"price\": 250000,\n    \"quantity\": 15\n}"
+                            "raw": "{\n    \"code\": \"SP_TRASH\",\n    \"name\": \"Sản phẩm mới tái sử dụng mã SP_TRASH\",\n    \"description\": \"Code trùng với sản phẩm trong thùng rác nhưng phải tạo thành công\",\n    \"price\": 250000,\n    \"quantity\": 15,\n    \"categoryIds\": [\"{{createdCategoryId}}\"]\n}"
                         },
                         "url": {
                             "raw": "{{baseUrl}}/api/admin/products",
@@ -757,7 +1215,7 @@
                     }
                 },
                 {
-                    "name": "3.4 [Nghiệp vụ] Khôi phục SP cũ trong thùng rác bị trùng mã (Kỳ vọng: CHẶN và báo lỗi 409)",
+                    "name": "4.4 [Nghiệp vụ] Khôi phục SP cũ trong thùng rác bị trùng mã (Kỳ vọng: CHẶN 409 Conflict)",
                     "event": [
                         {
                             "listen": "test",
@@ -794,16 +1252,57 @@
                             ]
                         }
                     }
-                },
+                }
+            ]
+        },
+        {
+            "name": "05. Kiểm thử Phân quyền Chi tiết (Fine-grained RBAC - Staff vs Admin)",
+            "item": [
                 {
-                    "name": "3.5 [Nghiệp vụ] Sửa sản phẩm đang trong thùng rác (Kỳ vọng: CHẶN không cho sửa 400)",
+                    "name": "5.1 Staff xem danh sách sản phẩm (Có quyền product:read -> 200 OK)",
                     "event": [
                         {
                             "listen": "test",
                             "script": {
                                 "exec": [
-                                    "pm.test('Bị chặn sửa SP trong thùng rác (400 Bad Request)', function () {",
-                                    "    pm.response.to.have.status(400);",
+                                    "pm.test('Staff có quyền product:read truy cập thành công 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{staffToken}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/admin/products",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "admin",
+                                "products"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "5.2 Staff cập nhật sản phẩm (Có quyền product:update -> 200 OK)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Staff có quyền product:update cập nhật thành công 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
                                     "});"
                                 ],
                                 "type": "text/javascript"
@@ -819,15 +1318,15 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "Bearer {{adminToken}}"
+                                "value": "Bearer {{staffToken}}"
                             }
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"name\": \"Cố tình sửa SP trong thùng rác\",\n    \"price\": 300000\n}"
+                            "raw": "{\n    \"code\": \"SP001\",\n    \"name\": \"Bàn phím cơ DareU EK87 (Staff sửa giá)\",\n    \"price\": 620000,\n    \"quantity\": 28\n}"
                         },
                         "url": {
-                            "raw": "{{baseUrl}}/api/admin/products/{{conflictProductId}}",
+                            "raw": "{{baseUrl}}/api/admin/products/{{createdProductId}}",
                             "host": [
                                 "{{baseUrl}}"
                             ],
@@ -835,20 +1334,105 @@
                                 "api",
                                 "admin",
                                 "products",
-                                "{{conflictProductId}}"
+                                "{{createdProductId}}"
                             ]
                         }
                     }
                 },
                 {
-                    "name": "3.6 [Nghiệp vụ] Khách xem chi tiết SP đang trong thùng rác (Kỳ vọng: BỊ CHẶN 404 Not Found)",
+                    "name": "5.3 Staff cố tình tạo sản phẩm (Thiếu quyền product:create -> 403 Forbidden)",
                     "event": [
                         {
                             "listen": "test",
                             "script": {
                                 "exec": [
-                                    "pm.test('Khách không thể xem SP trong thùng rác (404 Not Found)', function () {",
-                                    "    pm.response.to.have.status(404);",
+                                    "pm.test('Staff không có quyền tạo sản phẩm bị chặn 403 Forbidden', function () {",
+                                    "    pm.response.to.have.status(403);",
+                                    "});",
+                                    "pm.test('Mã lỗi trả về 1005 (UNAUTHORIZED)', function () {",
+                                    "    var jsonData = pm.response.json();",
+                                    "    pm.expect(jsonData.code).to.eql(1005);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{staffToken}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"code\": \"SP_STAFF_HACK\",\n    \"name\": \"Sản phẩm do staff cố tình tạo lén\",\n    \"price\": 100000,\n    \"quantity\": 10,\n    \"categoryIds\": [\"{{createdCategoryId}}\"]\n}"
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/admin/products",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "admin",
+                                "products"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "5.4 Staff cố tình xóa sản phẩm (Thiếu quyền product:delete -> 403 Forbidden)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Staff không có quyền xóa bị chặn 403 Forbidden', function () {",
+                                    "    pm.response.to.have.status(403);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{staffToken}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/admin/products/{{createdProductId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "admin",
+                                "products",
+                                "{{createdProductId}}"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "5.5 Staff cố tình xem thùng rác (Thiếu quyền product:bin:read -> 403 Forbidden)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Staff không có quyền xem thùng rác bị chặn 403 Forbidden', function () {",
+                                    "    pm.response.to.have.status(403);",
                                     "});"
                                 ],
                                 "type": "text/javascript"
@@ -857,17 +1441,22 @@
                     ],
                     "request": {
                         "method": "GET",
-                        "header": [],
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{staffToken}}"
+                            }
+                        ],
                         "url": {
-                            "raw": "{{baseUrl}}/api/client/products/{{conflictProductId}}",
+                            "raw": "{{baseUrl}}/api/admin/products/bin",
                             "host": [
                                 "{{baseUrl}}"
                             ],
                             "path": [
                                 "api",
-                                "client",
+                                "admin",
                                 "products",
-                                "{{conflictProductId}}"
+                                "bin"
                             ]
                         }
                     }
@@ -875,10 +1464,54 @@
             ]
         },
         {
-            "name": "04. Các trường hợp lỗi & Validation (Negative Cases)",
+            "name": "06. Các trường hợp lỗi & Validation (Negative Cases)",
             "item": [
                 {
-                    "name": "4.1 Tạo SP - Trùng mã code với sản phẩm đang hoạt động (409)",
+                    "name": "6.1 Tạo SP không có categoryIds (Kỳ vọng: 400 Bad Request)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Báo lỗi thiếu danh mục (400 Bad Request)', function () {",
+                                    "    pm.response.to.have.status(400);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{adminToken}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"code\": \"SP_NO_CAT\",\n    \"name\": \"Sản phẩm không có danh mục\",\n    \"price\": 100000,\n    \"quantity\": 10,\n    \"categoryIds\": []\n}"
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/admin/products",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "admin",
+                                "products"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "6.2 Tạo SP - Trùng mã code với sản phẩm đang hoạt động (409)",
                     "event": [
                         {
                             "listen": "test",
@@ -906,7 +1539,7 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"code\": \"SP001\",\n    \"name\": \"Tên khác nhưng trùng mã SP001 đang hoạt động\",\n    \"price\": 100000,\n    \"quantity\": 10\n}"
+                            "raw": "{\n    \"code\": \"SP001\",\n    \"name\": \"Tên khác nhưng trùng mã SP001 đang hoạt động\",\n    \"price\": 100000,\n    \"quantity\": 10,\n    \"categoryIds\": [\"{{createdCategoryId}}\"]\n}"
                         },
                         "url": {
                             "raw": "{{baseUrl}}/api/admin/products",
@@ -922,141 +1555,7 @@
                     }
                 },
                 {
-                    "name": "4.2 Tạo SP - Trùng tên với sản phẩm đang hoạt động (409)",
-                    "event": [
-                        {
-                            "listen": "test",
-                            "script": {
-                                "exec": [
-                                    "pm.test('Báo lỗi trùng tên sản phẩm (409 Conflict)', function () {",
-                                    "    pm.response.to.have.status(409);",
-                                    "});"
-                                ],
-                                "type": "text/javascript"
-                            }
-                        }
-                    ],
-                    "request": {
-                        "method": "POST",
-                        "header": [
-                            {
-                                "key": "Content-Type",
-                                "value": "application/json"
-                            },
-                            {
-                                "key": "Authorization",
-                                "value": "Bearer {{adminToken}}"
-                            }
-                        ],
-                        "body": {
-                            "mode": "raw",
-                            "raw": "{\n    \"code\": \"SP_KHAC_01\",\n    \"name\": \"Bàn phím cơ DareU EK87 V2\",\n    \"price\": 120000,\n    \"quantity\": 5\n}"
-                        },
-                        "url": {
-                            "raw": "{{baseUrl}}/api/admin/products",
-                            "host": [
-                                "{{baseUrl}}"
-                            ],
-                            "path": [
-                                "api",
-                                "admin",
-                                "products"
-                            ]
-                        }
-                    }
-                },
-                {
-                    "name": "4.3 Cập nhật SP - Sửa trùng mã code của sản phẩm khác (409)",
-                    "event": [
-                        {
-                            "listen": "test",
-                            "script": {
-                                "exec": [
-                                    "pm.test('Báo lỗi trùng mã khi sửa (409 Conflict)', function () {",
-                                    "    pm.response.to.have.status(409);",
-                                    "});"
-                                ],
-                                "type": "text/javascript"
-                            }
-                        }
-                    ],
-                    "request": {
-                        "method": "PUT",
-                        "header": [
-                            {
-                                "key": "Content-Type",
-                                "value": "application/json"
-                            },
-                            {
-                                "key": "Authorization",
-                                "value": "Bearer {{adminToken}}"
-                            }
-                        ],
-                        "body": {
-                            "mode": "raw",
-                            "raw": "{\n    \"code\": \"SP_TRASH\"\n}"
-                        },
-                        "url": {
-                            "raw": "{{baseUrl}}/api/admin/products/{{createdProductId}}",
-                            "host": [
-                                "{{baseUrl}}"
-                            ],
-                            "path": [
-                                "api",
-                                "admin",
-                                "products",
-                                "{{createdProductId}}"
-                            ]
-                        }
-                    }
-                },
-                {
-                    "name": "4.4 Cập nhật SP - ID không tồn tại (404)",
-                    "event": [
-                        {
-                            "listen": "test",
-                            "script": {
-                                "exec": [
-                                    "pm.test('Status code is 404', function () {",
-                                    "    pm.response.to.have.status(404);",
-                                    "});"
-                                ],
-                                "type": "text/javascript"
-                            }
-                        }
-                    ],
-                    "request": {
-                        "method": "PUT",
-                        "header": [
-                            {
-                                "key": "Content-Type",
-                                "value": "application/json"
-                            },
-                            {
-                                "key": "Authorization",
-                                "value": "Bearer {{adminToken}}"
-                            }
-                        ],
-                        "body": {
-                            "mode": "raw",
-                            "raw": "{\n    \"name\": \"SP không tồn tại\",\n    \"price\": 100000\n}"
-                        },
-                        "url": {
-                            "raw": "{{baseUrl}}/api/admin/products/00000000-0000-0000-0000-000000000000",
-                            "host": [
-                                "{{baseUrl}}"
-                            ],
-                            "path": [
-                                "api",
-                                "admin",
-                                "products",
-                                "00000000-0000-0000-0000-000000000000"
-                            ]
-                        }
-                    }
-                },
-                {
-                    "name": "4.5 Lấy chi tiết SP (Admin) - ID không tồn tại (404)",
+                    "name": "6.3 Lấy chi tiết SP (Admin) - ID không tồn tại (404)",
                     "event": [
                         {
                             "listen": "test",
@@ -1086,157 +1585,6 @@
                             "path": [
                                 "api",
                                 "admin",
-                                "products",
-                                "00000000-0000-0000-0000-000000000000"
-                            ]
-                        }
-                    }
-                },
-                {
-                    "name": "4.6 Khôi phục SP - ID không tồn tại (404)",
-                    "event": [
-                        {
-                            "listen": "test",
-                            "script": {
-                                "exec": [
-                                    "pm.test('Status code is 404', function () {",
-                                    "    pm.response.to.have.status(404);",
-                                    "});"
-                                ],
-                                "type": "text/javascript"
-                            }
-                        }
-                    ],
-                    "request": {
-                        "method": "PATCH",
-                        "header": [
-                            {
-                                "key": "Authorization",
-                                "value": "Bearer {{adminToken}}"
-                            }
-                        ],
-                        "url": {
-                            "raw": "{{baseUrl}}/api/admin/products/bin/00000000-0000-0000-0000-000000000000/restore",
-                            "host": [
-                                "{{baseUrl}}"
-                            ],
-                            "path": [
-                                "api",
-                                "admin",
-                                "products",
-                                "bin",
-                                "00000000-0000-0000-0000-000000000000",
-                                "restore"
-                            ]
-                        }
-                    }
-                },
-                {
-                    "name": "4.7 Xóa mềm SP - ID không tồn tại (404)",
-                    "event": [
-                        {
-                            "listen": "test",
-                            "script": {
-                                "exec": [
-                                    "pm.test('Status code is 404', function () {",
-                                    "    pm.response.to.have.status(404);",
-                                    "});"
-                                ],
-                                "type": "text/javascript"
-                            }
-                        }
-                    ],
-                    "request": {
-                        "method": "DELETE",
-                        "header": [
-                            {
-                                "key": "Authorization",
-                                "value": "Bearer {{adminToken}}"
-                            }
-                        ],
-                        "url": {
-                            "raw": "{{baseUrl}}/api/admin/products/00000000-0000-0000-0000-000000000000",
-                            "host": [
-                                "{{baseUrl}}"
-                            ],
-                            "path": [
-                                "api",
-                                "admin",
-                                "products",
-                                "00000000-0000-0000-0000-000000000000"
-                            ]
-                        }
-                    }
-                },
-                {
-                    "name": "4.8 Xóa cứng SP - ID không tồn tại (404)",
-                    "event": [
-                        {
-                            "listen": "test",
-                            "script": {
-                                "exec": [
-                                    "pm.test('Status code is 404', function () {",
-                                    "    pm.response.to.have.status(404);",
-                                    "});"
-                                ],
-                                "type": "text/javascript"
-                            }
-                        }
-                    ],
-                    "request": {
-                        "method": "DELETE",
-                        "header": [
-                            {
-                                "key": "Authorization",
-                                "value": "Bearer {{adminToken}}"
-                            }
-                        ],
-                        "url": {
-                            "raw": "{{baseUrl}}/api/admin/products/00000000-0000-0000-0000-000000000000?hard=true",
-                            "host": [
-                                "{{baseUrl}}"
-                            ],
-                            "path": [
-                                "api",
-                                "admin",
-                                "products",
-                                "00000000-0000-0000-0000-000000000000"
-                            ],
-                            "query": [
-                                {
-                                    "key": "hard",
-                                    "value": "true"
-                                }
-                            ]
-                        }
-                    }
-                },
-                {
-                    "name": "4.9 Khách xem chi tiết - ID không tồn tại (404)",
-                    "event": [
-                        {
-                            "listen": "test",
-                            "script": {
-                                "exec": [
-                                    "pm.test('Status code is 404', function () {",
-                                    "    pm.response.to.have.status(404);",
-                                    "});"
-                                ],
-                                "type": "text/javascript"
-                            }
-                        }
-                    ],
-                    "request": {
-                        "method": "GET",
-                        "header": [],
-                        "url": {
-                            "raw": "{{baseUrl}}/api/client/products/00000000-0000-0000-0000-000000000000",
-                            "host": [
-                                "{{baseUrl}}"
-                            ],
-                            "path": [
-                                "api",
-                                "client",
                                 "products",
                                 "00000000-0000-0000-0000-000000000000"
                             ]
@@ -1246,10 +1594,10 @@
             ]
         },
         {
-            "name": "05. Test Ngoại lệ - Sai đường dẫn & Security (404 Not Found thay vì 403)",
+            "name": "07. Test Ngoại lệ - Sai đường dẫn & Security (404 Not Found thay vì 403)",
             "item": [
                 {
-                    "name": "5.1 Nhập sai đường dẫn hoàn toàn (Kỳ vọng: 404 Not Found thay vì 403)",
+                    "name": "7.1 Nhập sai đường dẫn hoàn toàn (Kỳ vọng: 404 Not Found thay vì 403)",
                     "event": [
                         {
                             "listen": "test",
@@ -1283,76 +1631,7 @@
                     }
                 },
                 {
-                    "name": "5.2 Nhập sai đường dẫn theo URL cũ /products/admin (Kỳ vọng: 404 Not Found thay vì 403)",
-                    "event": [
-                        {
-                            "listen": "test",
-                            "script": {
-                                "exec": [
-                                    "pm.test('Đường dẫn cũ không còn tồn tại trả về 404 Not Found thay vì 403', function () {",
-                                    "    pm.response.to.have.status(404);",
-                                    "});",
-                                    "pm.test('Mã lỗi trả về code 1003 (PATH_NOT_FOUND)', function () {",
-                                    "    var jsonData = pm.response.json();",
-                                    "    pm.expect(jsonData.code).to.eql(1003);",
-                                    "});"
-                                ],
-                                "type": "text/javascript"
-                            }
-                        }
-                    ],
-                    "request": {
-                        "method": "GET",
-                        "header": [],
-                        "url": {
-                            "raw": "{{baseUrl}}/products/admin",
-                            "host": [
-                                "{{baseUrl}}"
-                            ],
-                            "path": [
-                                "products",
-                                "admin"
-                            ]
-                        }
-                    }
-                },
-                {
-                    "name": "5.3 Nhập sai đường dẫn phía client /api/client/sai-duong-dan (Kỳ vọng: 404 Not Found)",
-                    "event": [
-                        {
-                            "listen": "test",
-                            "script": {
-                                "exec": [
-                                    "pm.test('Sai đường dẫn client trả về 404 Not Found', function () {",
-                                    "    pm.response.to.have.status(404);",
-                                    "});",
-                                    "pm.test('Mã lỗi trả về code 1003 (PATH_NOT_FOUND)', function () {",
-                                    "    var jsonData = pm.response.json();",
-                                    "    pm.expect(jsonData.code).to.eql(1003);",
-                                    "});"
-                                ],
-                                "type": "text/javascript"
-                            }
-                        }
-                    ],
-                    "request": {
-                        "method": "GET",
-                        "header": [],
-                        "url": {
-                            "raw": "{{baseUrl}}/api/client/sai-duong-dan",
-                            "host": [
-                                "{{baseUrl}}"
-                            ],
-                            "path": [
-                                "api",
-                                "client",
-                                "sai-duong-dan"
-                            ]
-                        }
-                    }
-                },
-                {
-                    "name": "5.4 Gọi API Admin khi chưa đăng nhập / không gửi token (Kỳ vọng: 401 Unauthorized)",
+                    "name": "7.2 Gọi API Admin khi chưa đăng nhập / không gửi token (Kỳ vọng: 401 Unauthorized)",
                     "event": [
                         {
                             "listen": "test",
